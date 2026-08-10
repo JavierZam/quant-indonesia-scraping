@@ -1,0 +1,43 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: quant_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: quantuser
+      POSTGRES_PASSWORD: quantpass
+      POSTGRES_DB: quantintel
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quantuser -d quantintel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quantnet
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    container_name: quant_valkey
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quantnet
+
+volumes:
+  pgdata:
+
+networks:
+  quantnet:
+    driver: bridge

@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS news_stock_tags CASCADE;
