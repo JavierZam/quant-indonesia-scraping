@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
 )
 
 // ExecutiveRepo implements domain.ExecutiveRepository using PostgreSQL.

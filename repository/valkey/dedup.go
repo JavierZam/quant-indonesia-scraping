@@ -30,6 +30,10 @@ func NewDedupCache(client valkeylib.Client) *DedupCache {
 // Exists checks whether a URL hash has already been ingested.
 // Returns true if the hash exists in the cache, false otherwise.
 func (d *DedupCache) Exists(ctx context.Context, urlHash string) (bool, error) {
+	if d.client == nil {
+		return false, nil
+	}
+
 	key := dedupKeyPrefix + urlHash
 
 	cmd := d.client.B().Exists().Key(key).Build()
@@ -44,6 +48,10 @@ func (d *DedupCache) Exists(ctx context.Context, urlHash string) (bool, error) {
 // Set marks a URL hash as ingested by storing it in Valkey with a TTL.
 // This prevents the same URL from being re-processed within the TTL window.
 func (d *DedupCache) Set(ctx context.Context, urlHash string) error {
+	if d.client == nil {
+		return nil
+	}
+
 	key := dedupKeyPrefix + urlHash
 
 	cmd := d.client.B().Set().Key(key).Value("1").Ex(dedupTTL).Build()

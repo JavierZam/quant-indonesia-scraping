@@ -19,10 +19,21 @@ type StockRepository interface {
 	GetBySymbol(ctx context.Context, symbol string) (*Stock, error)
 	List(ctx context.Context, sector string, limit, offset int) ([]*Stock, error)
 	Upsert(ctx context.Context, stock *Stock) error
+	UpsertExecutive(ctx context.Context, exec *Executive) error
+	ListExecutivesBySymbol(ctx context.Context, symbol string) ([]*Executive, error)
+	ListAllSymbols(ctx context.Context) ([]string, error)
 }
 
 // StockUsecase defines the business logic interface for stocks.
 type StockUsecase interface {
 	GetBySymbol(ctx context.Context, symbol string) (*Stock, error)
 	List(ctx context.Context, sector string, limit, offset int) ([]*Stock, error)
+}
+
+// StockDetail is a combined view for the stock detail panel.
+type StockDetail struct {
+	Stock      *Stock         `json:"stock"`
+	Profile    *StockProfile  `json:"profile,omitempty"`
+	Executives []*Executive   `json:"executives,omitempty"`
+	News       []*NewsArticle `json:"news,omitempty"`
 }

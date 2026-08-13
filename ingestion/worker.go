@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
-	"github.com/javier-garcia/quant-indonesia-scraping/pkg/hasher"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/pkg/hasher"
 )
 
 // Job represents a single ingestion task to be processed by a worker.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
 )
 
 // StockUsecase implements domain.StockUsecase.

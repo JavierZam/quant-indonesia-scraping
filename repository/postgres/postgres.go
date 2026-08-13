@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/config"
+	"github.com/JavierZam/quant-indonesia-scraping/config"
 )
 
 // NewPostgresPool creates and validates a new pgx connection pool.

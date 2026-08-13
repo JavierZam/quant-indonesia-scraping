@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 // Config holds all configuration for the application.
@@ -18,13 +21,16 @@ type Config struct {
 
 // ServerConfig holds HTTP server configuration.
 type ServerConfig struct {
-	Port         string
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	Port           string
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	RateLimitRPS   int
+	RateLimitBurst int
 }
 
 // DBConfig holds PostgreSQL connection configuration.
 type DBConfig struct {
+	URL      string
 	Host     string
 	Port     string
 	User     string
@@ -37,6 +43,9 @@ type DBConfig struct {
 
 // DSN returns the PostgreSQL connection string.
 func (c *DBConfig) DSN() string {
+	if c.URL != "" {
+		return c.URL
+	}
 	return fmt.Sprintf(
 		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		c.User, c.Password, c.Host, c.Port, c.Name, c.SSLMode,
@@ -57,23 +66,45 @@ type LLMConfig struct {
 	Model    string
 }
 
+// APIKeys returns a slice of API keys, split by comma if multiple are provided.
+func (c *LLMConfig) APIKeys() []string {
+	if c.APIKey == "" {
+		return nil
+	}
+	rawKeys := strings.Split(c.APIKey, ",")
+	var keys []string
+	for _, k := range rawKeys {
+		k = strings.TrimSpace(k)
+		if k != "" {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
 // IngestionConfig holds ingestion worker pool configuration.
 type IngestionConfig struct {
 	Workers      int
 	RateLimitRPS int
 	RetryMax     int
+	CronSchedule string
 }
 
-// Load reads configuration from environment variables.
+// Load reads configuration from environment variables (loading .env if present).
 // In production on GCP Cloud Run, secrets are injected as env vars via Secret Manager.
 func Load() (*Config, error) {
+	_ = godotenv.Load()
+
 	cfg := &Config{
 		Server: ServerConfig{
-			Port:         getEnv("SERVER_PORT", "8080"),
-			ReadTimeout:  15 * time.Second,
-			WriteTimeout: 15 * time.Second,
+			Port:           getEnv("SERVER_PORT", "8080"),
+			ReadTimeout:    15 * time.Second,
+			WriteTimeout:   5 * time.Minute,
+			RateLimitRPS:   getEnvInt("RATE_LIMIT_RPS", 10),
+			RateLimitBurst: getEnvInt("RATE_LIMIT_BURST", 20),
 		},
 		DB: DBConfig{
+			URL:      getEnv("DATABASE_URL", getEnv("DB_URL", "")),
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     getEnv("DB_PORT", "5432"),
 			User:     getEnv("DB_USER", "quantuser"),
@@ -91,12 +122,13 @@ func Load() (*Config, error) {
 		LLM: LLMConfig{
 			Provider: getEnv("LLM_PROVIDER", "gemini"),
 			APIKey:   getEnv("LLM_API_KEY", ""),
-			Model:    getEnv("LLM_MODEL", "gemini-2.0-flash"),
+			Model:    getEnv("LLM_MODEL", "gemini-2.5-flash"),
 		},
 		Ingestion: IngestionConfig{
 			Workers:      getEnvInt("INGESTION_WORKERS", 10),
 			RateLimitRPS: getEnvInt("INGESTION_RATE_LIMIT_RPS", 5),
 			RetryMax:     getEnvInt("INGESTION_RETRY_MAX", 3),
+			CronSchedule: getEnv("INGESTION_CRON_SCHEDULE", "*/30 * * * *"),
 		},
 	}
 

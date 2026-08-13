@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
 )
 
 // StockRepo implements domain.StockRepository using PostgreSQL.
@@ -83,8 +83,12 @@ func (r *StockRepo) Upsert(ctx context.Context, stock *domain.Stock) error {
 	query := `INSERT INTO stocks (symbol, company_name, sector, created_at, updated_at)
 			  VALUES ($1, $2, $3, NOW(), NOW())
 			  ON CONFLICT (symbol) DO UPDATE SET
-				  company_name = EXCLUDED.company_name,
-				  sector = EXCLUDED.sector,
+				  company_name = CASE WHEN EXCLUDED.company_name != '' THEN EXCLUDED.company_name ELSE stocks.company_name END,
+				  sector = CASE 
+					  WHEN EXCLUDED.sector IS NOT NULL AND EXCLUDED.sector != '' AND EXCLUDED.sector != 'Finansial' AND EXCLUDED.sector != 'Financial Services' THEN EXCLUDED.sector
+					  WHEN stocks.sector IS NOT NULL AND stocks.sector != '' THEN stocks.sector
+					  ELSE EXCLUDED.sector
+				  END,
 				  updated_at = NOW()`
 
 	_, err := r.pool.Exec(ctx, query, stock.Symbol, stock.CompanyName, stock.Sector)
@@ -93,4 +97,65 @@ func (r *StockRepo) Upsert(ctx context.Context, stock *domain.Stock) error {
 	}
 
 	return nil
+}
+
+// UpsertExecutive inserts or updates an executive record.
+func (r *StockRepo) UpsertExecutive(ctx context.Context, exec *domain.Executive) error {
+	query := `INSERT INTO executives (symbol, name, title, created_at, updated_at)
+			  VALUES ($1, $2, $3, NOW(), NOW())
+			  ON CONFLICT (symbol, name) DO UPDATE SET
+				  title = EXCLUDED.title,
+				  updated_at = NOW()`
+
+	_, err := r.pool.Exec(ctx, query, exec.Symbol, exec.Name, exec.Title)
+	if err != nil {
+		return fmt.Errorf("upserting executive %s for %s: %w", exec.Name, exec.Symbol, err)
+	}
+
+	return nil
+}
+
+// ListExecutivesBySymbol retrieves executives for a given symbol.
+func (r *StockRepo) ListExecutivesBySymbol(ctx context.Context, symbol string) ([]*domain.Executive, error) {
+	query := `SELECT id, symbol, name, title, created_at, updated_at FROM executives WHERE symbol = $1 ORDER BY name`
+	rows, err := r.pool.Query(ctx, query, symbol)
+	if err != nil {
+		return nil, fmt.Errorf("listing executives for %s: %w", symbol, err)
+	}
+	defer rows.Close()
+
+	var executives []*domain.Executive
+	for rows.Next() {
+		var e domain.Executive
+		if err := rows.Scan(&e.ID, &e.Symbol, &e.Name, &e.Title, &e.CreatedAt, &e.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scanning executive row: %w", err)
+		}
+		executives = append(executives, &e)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating executive rows: %w", err)
+	}
+
+	return executives, nil
+}
+
+// ListAllSymbols returns all tracked stock symbols.
+func (r *StockRepo) ListAllSymbols(ctx context.Context) ([]string, error) {
+	query := `SELECT symbol FROM stocks ORDER BY symbol`
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("listing all symbols: %w", err)
+	}
+	defer rows.Close()
+
+	var symbols []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, fmt.Errorf("scanning symbol: %w", err)
+		}
+		symbols = append(symbols, s)
+	}
+	return symbols, rows.Err()
 }

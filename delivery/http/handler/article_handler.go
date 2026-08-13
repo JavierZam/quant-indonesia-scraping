@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
 )
 
 // ArticleHandler handles HTTP requests for news articles.
@@ -27,30 +27,18 @@ func (h *ArticleHandler) GetByID(c echo.Context) error {
 	idParam := c.Param("id")
 	id, err := uuid.Parse(idParam)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, APIResponse{
-			Success: false,
-			Error:   "invalid article ID format",
-		})
+		return c.JSON(http.StatusBadRequest, NewErrorResponse(ErrCodeValidation, "invalid article ID format"))
 	}
 
 	article, err := h.usecase.GetByID(c.Request().Context(), id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return c.JSON(http.StatusNotFound, APIResponse{
-				Success: false,
-				Error:   "article not found",
-			})
+			return c.JSON(http.StatusNotFound, NewErrorResponse(ErrCodeNotFound, "article not found"))
 		}
-		return c.JSON(http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Error:   "internal server error",
-		})
+		return c.JSON(http.StatusInternalServerError, NewErrorResponse(ErrCodeInternal, "internal server error"))
 	}
 
-	return c.JSON(http.StatusOK, APIResponse{
-		Success: true,
-		Data:    article,
-	})
+	return c.JSON(http.StatusOK, NewSuccessResponse(article, nil))
 }
 
 // List handles GET /api/v1/articles
@@ -70,10 +58,7 @@ func (h *ArticleHandler) List(c echo.Context) error {
 		case domain.SentimentBullish, domain.SentimentBearish, domain.SentimentNeutral:
 			filter.SentimentLabel = &label
 		default:
-			return c.JSON(http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "invalid sentiment: must be Bullish, Bearish, or Neutral",
-			})
+			return c.JSON(http.StatusBadRequest, NewErrorResponse(ErrCodeValidation, "invalid sentiment: must be Bullish, Bearish, or Neutral"))
 		}
 	}
 
@@ -81,10 +66,7 @@ func (h *ArticleHandler) List(c echo.Context) error {
 	if from := c.QueryParam("from"); from != "" {
 		t, err := time.Parse(time.DateOnly, from)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "invalid 'from' date format, use YYYY-MM-DD",
-			})
+			return c.JSON(http.StatusBadRequest, NewErrorResponse(ErrCodeValidation, "invalid 'from' date format, use YYYY-MM-DD"))
 		}
 		filter.FromDate = &t
 	}
@@ -92,10 +74,7 @@ func (h *ArticleHandler) List(c echo.Context) error {
 	if to := c.QueryParam("to"); to != "" {
 		t, err := time.Parse(time.DateOnly, to)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, APIResponse{
-				Success: false,
-				Error:   "invalid 'to' date format, use YYYY-MM-DD",
-			})
+			return c.JSON(http.StatusBadRequest, NewErrorResponse(ErrCodeValidation, "invalid 'to' date format, use YYYY-MM-DD"))
 		}
 		filter.ToDate = &t
 	}
@@ -115,19 +94,12 @@ func (h *ArticleHandler) List(c echo.Context) error {
 
 	articles, err := h.usecase.List(c.Request().Context(), filter)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, APIResponse{
-			Success: false,
-			Error:   "internal server error",
-		})
+		return c.JSON(http.StatusInternalServerError, NewErrorResponse(ErrCodeInternal, "internal server error"))
 	}
 
-	return c.JSON(http.StatusOK, APIResponse{
-		Success: true,
-		Data:    articles,
-		Meta: &Meta{
-			Limit:  filter.Limit,
-			Offset: filter.Offset,
-			Count:  len(articles),
-		},
-	})
+	return c.JSON(http.StatusOK, NewSuccessResponse(articles, &Meta{
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
+		Count:  len(articles),
+	}))
 }

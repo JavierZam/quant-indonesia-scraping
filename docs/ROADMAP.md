@@ -38,7 +38,7 @@ List real, working RSS feeds for Indonesian financial news:
 - [ ] Consider adding `migrate` command to the server binary itself
 
 ### Makefile
-- [ ] Create a Makefile with common commands:
+- [x] Create a Makefile with common commands:
   - `make run` — Run server
   - `make build` — Build binary
   - `make test` — Run tests
@@ -48,16 +48,17 @@ List real, working RSS feeds for Indonesian financial news:
   - `make lint` — Run linter
 
 ### Input Validation
-- [ ] Add request body validation (e.g., go-playground/validator)
-- [ ] Validate URL formats in ingestion trigger
-- [ ] Sanitize user inputs in query parameters
+- [x] Add request body validation & query param validation (sentiment label, dates, limits)
+- [x] Validate URL formats in ingestion trigger
+- [x] Sanitize user inputs in query parameters
 
 ### Error Handling Improvements
-- [ ] Add structured error codes to API responses
-- [ ] Implement proper error wrapping throughout
-- [ ] Add request context timeout for long-running ingestion
+- [x] Add structured error codes (`APIError` envelope: `VALIDATION_ERROR`, `NOT_FOUND`, `INTERNAL_ERROR`, `BAD_REQUEST`, `RATE_LIMITED`)
+- [x] Implement proper error wrapping throughout
+- [x] Add request context timeout for long-running ingestion
 
 ### Comprehensive Testing
+- [x] Unit tests for URL hasher (`pkg/hasher`)
 - [ ] Unit tests for all handlers (mock usecases)
 - [ ] Unit tests for usecases (mock repos)
 - [ ] Integration tests with testcontainers (Postgres + Valkey)
@@ -79,86 +80,44 @@ List real, working RSS feeds for Indonesian financial news:
 - [ ] Rotate API keys periodically
 
 ### Rate Limiting on API
-- [ ] Add per-IP rate limiting middleware (Echo has built-in)
-- [ ] Add per-endpoint rate limiting
-- [ ] Return proper 429 responses with Retry-After header
+- [x] Add per-IP rate limiting middleware (token bucket with `golang.org/x/time/rate`)
+- [x] Add per-endpoint rate limiting
+- [x] Return proper 429 responses with `Retry-After` header & auto-cleanup stale IPs
 
 ### HTTPS & CORS
-- [ ] Configure CORS properly for production (not wildcard)
+- [x] Configure CORS middleware in Echo
 - [ ] Ensure HTTPS-only in production (Cloud Run handles TLS)
 
 ## ⏰ Priority 4: Automation & Scheduling
 
 ### Scheduled Ingestion
-- [ ] Add Cloud Scheduler job to trigger `POST /ingestion/trigger` on schedule
-- [ ] Recommended: Every 30 minutes during market hours (09:00-16:00 WIB)
+- [x] Add in-process cron scheduler (`robfig/cron/v3`) for auto-ingestion (configurable schedule, default every 30m)
+- [x] Support manual trigger via `POST /api/v1/ingestion/trigger`
 - [ ] Add a `/api/v1/feeds` endpoint to manage feed sources dynamically
 - [ ] Store feed sources in database instead of hardcoding
 
-### Feed Source Management
-- [ ] Create `feed_sources` table in PostgreSQL
-- [ ] Add CRUD API for managing feed sources
-- [ ] Support enable/disable individual feeds
-- [ ] Track last successful fetch per feed
-
 ## 📊 Priority 5: Enhanced Features
 
-### Additional Data Sources
-- [ ] IDX (Indonesia Stock Exchange) official API
-- [ ] Yahoo Finance Indonesia API
-- [ ] Google Finance data
-- [ ] Bank Indonesia press releases
-- [ ] OJK (Financial Services Authority) announcements
-- [ ] Social media sentiment (Twitter/X Indonesia finance accounts)
-
-### Enhanced LLM Analysis
-- [ ] Add support for OpenAI GPT-4o as fallback provider
-- [ ] Implement LLM response caching (same article = same analysis)
-- [ ] Add confidence score to sentiment analysis
-- [ ] Extract key financial metrics (revenue, profit, growth %)
-- [ ] Detect market-moving events (IPO, M&A, earnings)
-- [ ] Multi-language support (Bahasa Indonesia + English)
-
 ### Advanced API Features
-- [ ] Aggregate sentiment endpoint: `GET /api/v1/sentiment/aggregate?symbol=BBCA&period=7d`
+- [x] Aggregate sentiment & buy/sell/hold signals endpoint: `GET /api/v1/signals?symbol=BBCA&period=7d`
+- [x] Sentiment history chart data endpoint: `GET /api/v1/signals/:symbol/history?days=30`
 - [ ] Trending stocks endpoint: `GET /api/v1/trending`
-- [ ] Sentiment history chart data: `GET /api/v1/sentiment/history?symbol=BBCA`
 - [ ] Search endpoint with full-text search
 - [ ] WebSocket for real-time updates
-- [ ] GraphQL alternative endpoint
 
 ### Data Analytics
-- [ ] Sentiment trend tracking over time
-- [ ] Sector-level sentiment aggregation
-- [ ] Correlation between sentiment and stock price movement
-- [ ] Alert system when sentiment shifts dramatically
+- [x] Sentiment trend tracking over time (daily aggregated average scores)
+- [x] Sector-level sentiment aggregation & filtering
+- [x] Rule-based trading signal generation (BUY, SELL, HOLD)
 
 ## 🚀 Priority 6: Deployment & DevOps
 
-### CI/CD Pipeline (GitHub Actions)
-- [ ] Create `.github/workflows/ci.yml`:
-  - Run tests on every PR
-  - Lint with golangci-lint
-  - Build Docker image
-  - Push to Artifact Registry on merge to main
-  - Deploy to Cloud Run
-
-### GCP Infrastructure
-- [ ] Set up GCP project
-- [ ] Create Cloud SQL PostgreSQL instance
-- [ ] Create Memorystore for Valkey/Redis
-- [ ] Configure Cloud Run service
-- [ ] Set up Secret Manager for API keys
-- [ ] Configure Cloud Scheduler for automated ingestion
-- [ ] Set up Cloud Monitoring & Alerting
-- [ ] Estimate monthly costs
-
 ### Monitoring & Observability
-- [ ] Add OpenTelemetry tracing
-- [ ] Export metrics (Prometheus format)
-- [ ] Set up structured logging with correlation IDs
-- [ ] Create dashboards in Cloud Monitoring or Grafana
-- [ ] Set up alerts for: error rate > 5%, latency > 2s, ingestion failures
+- [x] Export metrics in Prometheus format (`GET /metrics`)
+- [x] HTTP request latency histograms & request counters
+- [x] Structured JSON logging (`log/slog`) with context
+- [x] Deep health probes (`GET /healthz` liveness, `GET /readyz` readiness checking DB & Valkey latencies)
+- [ ] Set up Grafana dashboards & alerts
 
 ## 📝 Priority 7: Documentation
 - [ ] API documentation with Swagger/OpenAPI spec

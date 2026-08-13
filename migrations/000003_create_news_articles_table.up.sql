@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS news_articles (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_news_articles_url_hash ON news_articles(url_hash);
-CREATE INDEX idx_news_articles_published_at ON news_articles(published_at DESC);
-CREATE INDEX idx_news_articles_sentiment_label ON news_articles(sentiment_label);
-CREATE INDEX idx_news_articles_source ON news_articles(source);
+CREATE INDEX IF NOT EXISTS idx_news_articles_url_hash ON news_articles(url_hash);
+CREATE INDEX IF NOT EXISTS idx_news_articles_published_at ON news_articles(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_news_articles_sentiment_label ON news_articles(sentiment_label);
+CREATE INDEX IF NOT EXISTS idx_news_articles_source ON news_articles(source);

@@ -6,5 +6,5 @@ CREATE TABLE IF NOT EXISTS news_stock_tags (
     PRIMARY KEY (news_id, symbol)
 );
 
-CREATE INDEX idx_news_stock_tags_symbol ON news_stock_tags(symbol);
-CREATE INDEX idx_news_stock_tags_news_id ON news_stock_tags(news_id);
+CREATE INDEX IF NOT EXISTS idx_news_stock_tags_symbol ON news_stock_tags(symbol);
+CREATE INDEX IF NOT EXISTS idx_news_stock_tags_news_id ON news_stock_tags(news_id);

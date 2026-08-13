@@ -8,7 +8,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/pkg/broadcaster"
+	"github.com/JavierZam/quant-indonesia-scraping/pkg/sector"
 )
 
 // ArticleUsecase implements domain.ArticleUsecase.
@@ -16,6 +18,7 @@ type ArticleUsecase struct {
 	articleRepo domain.ArticleRepository
 	stockRepo   domain.StockRepository
 	llmAnalyzer domain.LLMAnalyzer
+	broadcaster *broadcaster.Broadcaster
 	logger      *slog.Logger
 }
 
@@ -32,6 +35,11 @@ func NewArticleUsecase(
 		llmAnalyzer: llmAnalyzer,
 		logger:      logger,
 	}
+}
+
+// SetBroadcaster sets the SSE broadcaster for progress updates.
+func (uc *ArticleUsecase) SetBroadcaster(b *broadcaster.Broadcaster) {
+	uc.broadcaster = b
 }
 
 // GetByID retrieves a single article by ID.
@@ -113,12 +121,14 @@ func (uc *ArticleUsecase) Ingest(ctx context.Context, article *domain.NewsArticl
 			}
 
 			// Try to determine sector from tags
+			rawSector := ""
 			for _, sectorTag := range analysis.Tags {
 				if sectorTag.Type == "sector" {
-					stock.Sector = sectorTag.Value
+					rawSector = sectorTag.Value
 					break
 				}
 			}
+			stock.Sector = sector.NormalizeSector(tag.TickerSymbol, rawSector)
 
 			if err := uc.stockRepo.Upsert(ctx, stock); err != nil {
 				uc.logger.Warn("failed to upsert stock",
@@ -135,6 +145,28 @@ func (uc *ArticleUsecase) Ingest(ctx context.Context, article *domain.NewsArticl
 				Symbol:         tag.TickerSymbol,
 				RelevanceScore: tag.RelevanceScore,
 			})
+		}
+	}
+
+	// Upsert executive entities associated with primary company ticker
+	primarySymbol := ""
+	for _, tag := range analysis.Tags {
+		if tag.Type == "company" && tag.TickerSymbol != "" {
+			primarySymbol = tag.TickerSymbol
+			break
+		}
+	}
+	if primarySymbol != "" {
+		for _, tag := range analysis.Tags {
+			if tag.Type == "executive" && tag.Value != "" {
+				if execErr := uc.stockRepo.UpsertExecutive(ctx, &domain.Executive{
+					Symbol: primarySymbol,
+					Name:   tag.Value,
+					Title:  "Key Figure / Executive",
+				}); execErr != nil {
+					uc.logger.Warn("failed to upsert executive", "name", tag.Value, "symbol", primarySymbol, "error", execErr)
+				}
+			}
 		}
 	}
 
@@ -159,3 +191,195 @@ func (uc *ArticleUsecase) Ingest(ctx context.Context, article *domain.NewsArticl
 
 	return nil
 }
+
+// ReprocessUnanalyzed finds articles that were saved without LLM analysis and processes them.
+func (uc *ArticleUsecase) ReprocessUnanalyzed(ctx context.Context) (int, []error) {
+	// Limit to 10 articles per batch so processing finishes fast (~25 seconds)
+	articles, err := uc.articleRepo.ListUnprocessed(ctx, 10)
+	if err != nil {
+		return 0, []error{fmt.Errorf("listing unprocessed articles: %w", err)}
+	}
+
+	if len(articles) == 0 {
+		uc.logger.Info("no unprocessed articles found")
+		if uc.broadcaster != nil {
+			uc.broadcaster.Broadcast(broadcaster.IngestionEvent{
+				Type:    "done",
+				Stage:   "REPROCESS",
+				Total:   0,
+				Message: "No unanalyzed articles found.",
+			})
+		}
+		return 0, nil
+	}
+
+	uc.logger.Info("reprocessing unanalyzed articles", "count", len(articles))
+
+	if uc.broadcaster != nil {
+		uc.broadcaster.Broadcast(broadcaster.IngestionEvent{
+			Type:    "start",
+			Stage:   "REPROCESS",
+			Total:   len(articles),
+			Message: fmt.Sprintf("Mulai memproses batch %d artikel dengan Gemini AI...", len(articles)),
+		})
+	}
+
+	var (
+		successCount int
+		errs         []error
+	)
+
+	for i, article := range articles {
+		if uc.broadcaster != nil {
+			uc.broadcaster.Broadcast(broadcaster.IngestionEvent{
+				Type:    "progress",
+				Stage:   "AI_ANALYSIS",
+				Current: i + 1,
+				Total:   len(articles),
+				Message: fmt.Sprintf("Gemini AI Menganalisis [%d/%d]: \"%s\"", i+1, len(articles), article.Title),
+			})
+		}
+
+		// Rate limit: wait 2.0s between requests to stay safe under 20 RPM free tier
+		if i > 0 {
+			select {
+			case <-time.After(2000 * time.Millisecond):
+			case <-ctx.Done():
+				uc.logger.Warn("reprocess cancelled", "processed", successCount)
+				return successCount, errs
+			}
+		}
+
+		// Run LLM analysis
+		analysis, err := uc.llmAnalyzer.Analyze(ctx, article.Title, article.ContentRaw)
+		if err != nil {
+			uc.logger.Error("LLM reprocess failed",
+				"article_id", article.ID,
+				"title", article.Title,
+				"error", err,
+			)
+			if uc.broadcaster != nil {
+				uc.broadcaster.Broadcast(broadcaster.IngestionEvent{
+					Type:    "error",
+					Stage:   "AI_ANALYSIS",
+					Current: i + 1,
+					Total:   len(articles),
+					Message: fmt.Sprintf("❌ AI Gagal [%d/%d]: %s (%v)", i+1, len(articles), article.Title, err),
+				})
+			}
+			errs = append(errs, fmt.Errorf("article %s: %w", article.ID, err))
+			continue
+		}
+
+		// Update article with analysis results
+		now := time.Now()
+		article.SentimentScore = &analysis.SentimentScore
+		article.SentimentLabel = &analysis.SentimentLabel
+		if analysis.Summary != "" {
+			article.Summary = analysis.Summary
+		}
+		article.ProcessedAt = &now
+
+		if err := uc.articleRepo.Update(ctx, article); err != nil {
+			uc.logger.Error("failed to update reprocessed article",
+				"article_id", article.ID,
+				"error", err,
+			)
+			errs = append(errs, fmt.Errorf("updating article %s: %w", article.ID, err))
+			continue
+		}
+
+		// Process tags
+		var tags []domain.NewsStockTag
+		for _, tag := range analysis.Tags {
+			if tag.Type == "company" && tag.TickerSymbol != "" {
+				stock := &domain.Stock{
+					Symbol:      tag.TickerSymbol,
+					CompanyName: tag.Value,
+				}
+				rawSector := ""
+				for _, sectorTag := range analysis.Tags {
+					if sectorTag.Type == "sector" {
+						rawSector = sectorTag.Value
+						break
+					}
+				}
+				stock.Sector = sector.NormalizeSector(tag.TickerSymbol, rawSector)
+				if err := uc.stockRepo.Upsert(ctx, stock); err != nil {
+					uc.logger.Warn("failed to upsert stock during reprocess",
+						"symbol", tag.TickerSymbol,
+						"error", err,
+					)
+					continue
+				}
+				tags = append(tags, domain.NewsStockTag{
+					NewsID:         article.ID,
+					Symbol:         tag.TickerSymbol,
+					RelevanceScore: tag.RelevanceScore,
+				})
+			}
+		}
+
+		// Upsert executive entities during reprocess
+		primarySymbol := ""
+		for _, tag := range analysis.Tags {
+			if tag.Type == "company" && tag.TickerSymbol != "" {
+				primarySymbol = tag.TickerSymbol
+				break
+			}
+		}
+		if primarySymbol != "" {
+			for _, tag := range analysis.Tags {
+				if tag.Type == "executive" && tag.Value != "" {
+					_ = uc.stockRepo.UpsertExecutive(ctx, &domain.Executive{
+						Symbol: primarySymbol,
+						Name:   tag.Value,
+						Title:  "Key Figure / Executive",
+					})
+				}
+			}
+		}
+
+		if len(tags) > 0 {
+			if err := uc.articleRepo.CreateTags(ctx, tags); err != nil {
+				uc.logger.Error("failed to create tags during reprocess",
+					"article_id", article.ID,
+					"error", err,
+				)
+			}
+		}
+
+		successCount++
+		uc.logger.Info("article reprocessed successfully",
+			"article_id", article.ID,
+			"sentiment", article.SentimentLabel,
+			"score", article.SentimentScore,
+			"tags", len(tags),
+		)
+
+		if uc.broadcaster != nil {
+			uc.broadcaster.Broadcast(broadcaster.IngestionEvent{
+				Type:      "log",
+				Stage:     "AI_ANALYSIS",
+				Current:   successCount,
+				Total:     len(articles),
+				Message:   fmt.Sprintf("✅ Selesai [%d/%d]: %s (%s | Score: %+.2f)", successCount, len(articles), article.Title, *article.SentimentLabel, *article.SentimentScore),
+				Sentiment: string(*article.SentimentLabel),
+				Score:     article.SentimentScore,
+			})
+		}
+	}
+
+	if uc.broadcaster != nil {
+		uc.broadcaster.Broadcast(broadcaster.IngestionEvent{
+			Type:    "done",
+			Stage:   "REPROCESS",
+			Current: successCount,
+			Total:   len(articles),
+			Message: fmt.Sprintf("🎉 Reprocess Selesai! %d/%d artikel berhasil dianalisis AI.", successCount, len(articles)),
+		})
+	}
+
+	return successCount, errs
+}
+

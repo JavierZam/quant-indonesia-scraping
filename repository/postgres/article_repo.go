@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
 )
 
 // ArticleRepo implements domain.ArticleRepository using PostgreSQL.
@@ -149,6 +149,42 @@ func (r *ArticleRepo) List(ctx context.Context, filter domain.ArticleFilter) ([]
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterating article rows: %w", err)
+	}
+
+	return articles, nil
+}
+
+// ListUnprocessed retrieves articles that haven't been analyzed by the LLM yet.
+func (r *ArticleRepo) ListUnprocessed(ctx context.Context, limit int) ([]*domain.NewsArticle, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+
+	query := `SELECT id, url_hash, title, url, source, summary, content_raw,
+					 sentiment_score, sentiment_label, published_at, ingested_at,
+					 processed_at, created_at, updated_at
+			  FROM news_articles
+			  WHERE processed_at IS NULL
+			  ORDER BY ingested_at DESC
+			  LIMIT $1`
+
+	rows, err := r.pool.Query(ctx, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("listing unprocessed articles: %w", err)
+	}
+	defer rows.Close()
+
+	var articles []*domain.NewsArticle
+	for rows.Next() {
+		a, err := r.scanArticleFromRows(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning unprocessed article row: %w", err)
+		}
+		articles = append(articles, a)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating unprocessed article rows: %w", err)
 	}
 
 	return articles, nil

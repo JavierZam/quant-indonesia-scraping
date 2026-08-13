@@ -2,15 +2,16 @@ package http
 
 import (
 	"log/slog"
-	"net/http"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	echomw "github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	valkeylib "github.com/valkey-io/valkey-go"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/delivery/http/handler"
-	"github.com/javier-garcia/quant-indonesia-scraping/delivery/http/middleware"
+	"github.com/JavierZam/quant-indonesia-scraping/delivery/http/handler"
+	"github.com/JavierZam/quant-indonesia-scraping/delivery/http/middleware"
+	"github.com/JavierZam/quant-indonesia-scraping/pkg/broadcaster"
 )
 
 // RouterDeps holds all dependencies needed to configure the HTTP router.
@@ -18,8 +19,14 @@ type RouterDeps struct {
 	ArticleHandler   *handler.ArticleHandler
 	StockHandler     *handler.StockHandler
 	IngestionHandler *handler.IngestionHandler
+	HealthHandler    *handler.HealthHandler
+	SignalHandler    *handler.SignalHandler
+	ImportHandler    *handler.ImportHandler
+	Broadcaster      *broadcaster.Broadcaster
 	ValkeyClient     valkeylib.Client
 	Logger           *slog.Logger
+	RateLimitRPS     int
+	RateLimitBurst   int
 }
 
 // NewRouter creates and configures the Echo HTTP router with all routes registered.
@@ -36,12 +43,24 @@ func NewRouter(deps RouterDeps) *echo.Echo {
 		Level: 5,
 	}))
 
-	// Health check endpoint (required for Cloud Run)
-	e.GET("/health", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{
-			"status": "healthy",
-		})
-	})
+	// Prometheus metrics middleware
+	e.Use(middleware.MetricsMiddleware())
+
+	// Rate limiter middleware
+	if deps.RateLimitRPS > 0 {
+		e.Use(middleware.RateLimiterMiddleware(middleware.RateLimiterConfig{
+			RPS:   deps.RateLimitRPS,
+			Burst: deps.RateLimitBurst,
+		}))
+	}
+
+	// Health check endpoints
+	e.GET("/health", deps.HealthHandler.Liveness)  // backward compat
+	e.GET("/healthz", deps.HealthHandler.Liveness) // liveness probe
+	e.GET("/readyz", deps.HealthHandler.Readiness)  // readiness probe
+
+	// Prometheus metrics endpoint
+	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 
 	// API v1 group
 	v1 := e.Group("/api/v1")
@@ -62,10 +81,39 @@ func NewRouter(deps RouterDeps) *echo.Echo {
 	stocks := v1.Group("/stocks")
 	stocks.GET("", deps.StockHandler.List, cacheMiddleware)
 	stocks.GET("/:symbol", deps.StockHandler.GetBySymbol, cacheMiddleware)
+	stocks.GET("/:symbol/detail", deps.StockHandler.GetDetail, cacheMiddleware)
+	stocks.GET("/:symbol/news", deps.StockHandler.GetNews, cacheMiddleware)
+	stocks.POST("/:symbol/profile", deps.StockHandler.FetchProfile)
+
+	// Signal routes
+	signals := v1.Group("/signals")
+	signals.GET("", deps.SignalHandler.GetSignals, cacheMiddleware)
+	signals.GET("/:symbol/history", deps.SignalHandler.GetHistory, cacheMiddleware)
+
+	// Market data routes
+	market := v1.Group("/market")
+	market.GET("/ihsg", deps.StockHandler.GetIHSG, cacheMiddleware)
 
 	// Ingestion routes (no caching — these are write operations)
 	ingestionGroup := v1.Group("/ingestion")
 	ingestionGroup.POST("/trigger", deps.IngestionHandler.Trigger)
+	ingestionGroup.POST("/reprocess", deps.IngestionHandler.Reprocess)
+	ingestionGroup.POST("/cancel", deps.IngestionHandler.Cancel)
+	if deps.Broadcaster != nil {
+		ingestionGroup.GET("/stream", deps.Broadcaster.Handler)
+	}
+
+	// Import routes (prices & broker data)
+	if deps.ImportHandler != nil {
+		importGroup := v1.Group("/import")
+		importGroup.POST("/prices", deps.ImportHandler.ImportPrices)
+		importGroup.POST("/fetch-prices/:symbol", deps.ImportHandler.FetchYahooPrices)
+		importGroup.POST("/broker-summary", deps.ImportHandler.ImportBrokerSummary)
+		importGroup.POST("/refresh-prices", deps.ImportHandler.RefreshAllPrices)
+	}
+
+	// Serve Static Web Dashboard
+	e.Static("/", "web")
 
 	return e
 }

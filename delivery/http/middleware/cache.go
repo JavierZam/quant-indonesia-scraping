@@ -28,6 +28,11 @@ type CacheConfig struct {
 func CacheWithConfig(cfg CacheConfig) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			// Bypass cache if client is not configured
+			if cfg.Client == nil {
+				return next(c)
+			}
+
 			// Only cache GET requests
 			if c.Request().Method != http.MethodGet {
 				return next(c)
@@ -104,10 +109,13 @@ func buildCacheKey(c echo.Context) string {
 	return cacheKeyPrefix + path
 }
 
-// getFromCache retrieves a cached value from Valkey.
+// getFromCache retrieves a cached value from Valkey with a strict 100ms timeout.
 func getFromCache(ctx context.Context, client valkeylib.Client, key string) (string, error) {
+	cacheCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+
 	cmd := client.B().Get().Key(key).Build()
-	result, err := client.Do(ctx, cmd).ToString()
+	result, err := client.Do(cacheCtx, cmd).ToString()
 	if err != nil {
 		return "", err
 	}

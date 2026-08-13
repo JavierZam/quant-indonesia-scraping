@@ -8,7 +8,7 @@ import (
 
 	"github.com/mmcdole/gofeed"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/pkg/httpclient"
+	"github.com/JavierZam/quant-indonesia-scraping/pkg/httpclient"
 )
 
 // FeedItem represents a single parsed item from an RSS/Atom feed.

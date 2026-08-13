@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/config"
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/config"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
 )
 
 // NewAnalyzer creates an LLM analyzer based on the configured provider.

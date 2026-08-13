@@ -9,7 +9,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/pkg/httpclient"
+	"github.com/JavierZam/quant-indonesia-scraping/pkg/httpclient"
 )
 
 // articleSelectors are CSS selectors commonly used for article body content,

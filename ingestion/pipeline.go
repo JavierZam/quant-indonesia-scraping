@@ -2,18 +2,21 @@ package ingestion
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 
-	"github.com/javier-garcia/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/domain"
+	"github.com/JavierZam/quant-indonesia-scraping/pkg/broadcaster"
 )
 
 // Pipeline orchestrates the full ingestion workflow:
 // parse feeds → submit jobs → collect results.
 type Pipeline struct {
-	feedParser *FeedParser
-	workerPool *WorkerPool
-	logger     *slog.Logger
+	feedParser  *FeedParser
+	workerPool  *WorkerPool
+	logger      *slog.Logger
+	broadcaster *broadcaster.Broadcaster
 }
 
 // NewPipeline creates a new ingestion pipeline.
@@ -29,24 +32,40 @@ func NewPipeline(
 	}
 }
 
+// SetBroadcaster attaches an SSE broadcaster for real-time UI progress updates.
+func (p *Pipeline) SetBroadcaster(b *broadcaster.Broadcaster) {
+	p.broadcaster = b
+}
+
 // Run executes the ingestion pipeline for the given feed sources.
 // It returns all successfully ingested articles and any errors encountered.
 func (p *Pipeline) Run(ctx context.Context, sources []FeedSource) ([]*domain.NewsArticle, []error) {
 	p.logger.Info("ingestion pipeline starting", "sources", len(sources))
 
-	// Start the worker pool
-	p.workerPool.Start(ctx)
+	// Instantiate a fresh WorkerPool for this run to avoid channel reuse races
+	wp := NewWorkerPool(p.workerPool.numWorkers, p.workerPool.scraper, p.workerPool.dedupCache, p.logger)
+	wp.Start(ctx)
 
 	// Feed submission goroutine
 	go func() {
-		defer p.workerPool.Close()
+		defer wp.Close()
 
-		for _, source := range sources {
+		for i, source := range sources {
 			select {
 			case <-ctx.Done():
 				p.logger.Warn("feed submission cancelled")
 				return
 			default:
+			}
+
+			if p.broadcaster != nil {
+				p.broadcaster.Broadcast(broadcaster.IngestionEvent{
+					Type:    "progress",
+					Stage:   "SCRAPING",
+					Current: i + 1,
+					Total:   len(sources),
+					Message: fmt.Sprintf("Scraping RSS Feed [%d/%d]: %s...", i+1, len(sources), source.Name),
+				})
 			}
 
 			items, err := p.feedParser.ParseFeed(ctx, source)
@@ -58,8 +77,13 @@ func (p *Pipeline) Run(ctx context.Context, sources []FeedSource) ([]*domain.New
 				continue
 			}
 
+			// Limit to 20 latest items per feed source for fast, responsive ingestion
+			if len(items) > 20 {
+				items = items[:20]
+			}
+
 			for _, item := range items {
-				if !p.workerPool.Submit(ctx, Job{FeedItem: item}) {
+				if !wp.Submit(ctx, Job{FeedItem: item}) {
 					p.logger.Warn("job submission cancelled", "url", item.URL)
 					return
 				}
@@ -74,7 +98,7 @@ func (p *Pipeline) Run(ctx context.Context, sources []FeedSource) ([]*domain.New
 		mu       sync.Mutex
 	)
 
-	for result := range p.workerPool.Results() {
+	for result := range wp.Results() {
 		mu.Lock()
 		if result.Err != nil {
 			errs = append(errs, result.Err)

@@ -59,6 +59,7 @@ type ArticleRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*NewsArticle, error)
 	GetByURLHash(ctx context.Context, urlHash string) (*NewsArticle, error)
 	List(ctx context.Context, filter ArticleFilter) ([]*NewsArticle, error)
+	ListUnprocessed(ctx context.Context, limit int) ([]*NewsArticle, error)
 	Create(ctx context.Context, article *NewsArticle) error
 	Update(ctx context.Context, article *NewsArticle) error
 	CreateTags(ctx context.Context, tags []NewsStockTag) error
@@ -69,6 +70,7 @@ type ArticleUsecase interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*NewsArticle, error)
 	List(ctx context.Context, filter ArticleFilter) ([]*NewsArticle, error)
 	Ingest(ctx context.Context, article *NewsArticle) error
+	ReprocessUnanalyzed(ctx context.Context) (int, []error)
 }
 
 // DeduplicationCache defines the interface for URL dedup checks using Valkey.

@@ -12,11 +12,15 @@ A high-throughput automated **Market Intelligence & Quant News Pipeline** focuse
 ## ✨ Features
 
 - **Concurrent RSS Feed Ingestion**: High-performance worker pools for fetching and parsing RSS feeds.
+- **Automated Ingestion Scheduler**: Built-in cron scheduler (`robfig/cron/v3`) for periodic background ingestion.
 - **URL Deduplication**: Efficient deduplication using MD5 hashing stored in Valkey.
 - **AI-Powered Sentiment Analysis**: Leverages Google Gemini API to analyze market sentiment (Bullish/Bearish/Neutral) with confidence scores (-1.0 to +1.0).
 - **Entity Extraction**: Automatically identifies and extracts companies, executives, sectors, and IDX tickers mentioned in articles.
-- **RESTful API**: Fast and scalable API with pagination, filtering, and caching built on Echo v4.
-- **Resilience**: Implements exponential backoff retry and rate limiting for external API calls.
+- **Quant Trading Signals & Analytics**: Calculates aggregated sentiment metrics and generates trading recommendations (BUY/SELL/HOLD).
+- **Time-Series Chart Data**: Serves daily average sentiment scores for historical trend visualization.
+- **RESTful API**: Fast and scalable API with pagination, filtering, rate-limiting, and caching built on Echo v4.
+- **Observability**: Prometheus metrics export (`/metrics`) & deep health readiness probes (`/healthz`, `/readyz`).
+- **Resilience**: Implements exponential backoff retry and token-bucket rate limiting for external API calls.
 - **Graceful Shutdown**: Ensures all in-flight processes and database connections are closed safely.
 - **Cloud-Native**: Stateless design, distroless Docker container, ready for deployment on GCP Cloud Run.
 
@@ -44,6 +48,8 @@ flowchart LR
 | **Database** | PostgreSQL 16 (pgx v5) |
 | **Cache/Broker** | Valkey 8 |
 | **AI/LLM** | Google Gemini API |
+| **Metrics** | Prometheus |
+| **Scheduler** | robfig/cron v3 |
 | **Container** | Docker (distroless) |
 | **Deployment** | GCP Cloud Run |
 | **Architecture** | Clean Architecture |
@@ -71,29 +77,30 @@ flowchart LR
 
 3. **Set your Gemini API key in `.env`:**
    ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
+   LLM_API_KEY=your_gemini_api_key_here
    ```
 
 4. **Start the database and cache using Docker Compose:**
    ```bash
-   docker compose up -d
+   make infra-up
    ```
 
-5. **Run Database Migrations:**
+5. **Run Database Migrations & Seed Data:**
    ```bash
-   # Make sure PostgreSQL is ready
-   PGPASSWORD=postgres psql -h localhost -U postgres -d quant_intel -f migrations/001_initial_schema.sql
-   # Run remaining migrations if any...
+   make migrate-up
+   make seed
    ```
 
 6. **Run the server:**
    ```bash
-   go run ./cmd/server
+   make run
    ```
 
-7. **Test the API:**
+7. **Test Health & Metrics:**
    ```bash
-   curl -X GET http://localhost:8080/health
+   curl http://localhost:8080/healthz
+   curl http://localhost:8080/readyz
+   curl http://localhost:8080/metrics
    ```
 
 ## ⚙️ Configuration
@@ -102,87 +109,98 @@ Environment variables used to configure the application:
 
 | Variable | Description | Default |
 |---|---|---|
-| `PORT` | API Server port | `8080` |
-| `ENV` | Environment (`development`, `production`) | `development` |
+| `SERVER_PORT` | API Server port | `8080` |
 | `DB_HOST` | PostgreSQL Host | `localhost` |
 | `DB_PORT` | PostgreSQL Port | `5432` |
-| `DB_USER` | PostgreSQL User | `postgres` |
-| `DB_PASSWORD` | PostgreSQL Password | `postgres` |
-| `DB_NAME` | PostgreSQL Database Name | `quant_intel` |
+| `DB_USER` | PostgreSQL User | `quantuser` |
+| `DB_PASSWORD` | PostgreSQL Password | `quantpass` |
+| `DB_NAME` | PostgreSQL Database Name | `quantintel` |
 | `VALKEY_ADDR` | Valkey Address | `localhost:6379` |
-| `GEMINI_API_KEY`| Google Gemini API Key | *(Required)* |
-| `WORKER_COUNT` | Number of concurrent ingestion workers | `5` |
+| `LLM_PROVIDER` | AI Provider (`gemini`) | `gemini` |
+| `LLM_API_KEY`| Google Gemini API Key | *(Required)* |
+| `LLM_MODEL` | Gemini model name | `gemini-2.0-flash` |
+| `INGESTION_WORKERS` | Concurrent ingestion workers | `10` |
+| `INGESTION_CRON_SCHEDULE` | Cron schedule for background ingestion | `*/30 * * * *` |
+| `RATE_LIMIT_RPS` | Max requests per second per IP | `10` |
+| `RATE_LIMIT_BURST` | Max request burst per IP | `20` |
 
 ## 📚 API Documentation
 
-### 1. Health Check
-`GET /health`
+### 1. Health Checks & Metrics
+- `GET /healthz` — Liveness probe (`200 OK`)
+- `GET /readyz` — Readiness probe (Pings Postgres & Valkey, returns latency)
+- `GET /metrics` — Prometheus metrics exporter
+
+### 2. Trading Signals & Sentiment Analytics
+`GET /api/v1/signals`
+**Query Parameters:** `symbol`, `sector`, `period` (`24h`, `7d`, `30d`)
+**Response:**
 ```json
 {
-  "status": "ok",
-  "time": "2026-08-11T05:30:00Z"
+  "success": true,
+  "data": [
+    {
+      "symbol": "BBCA",
+      "company_name": "Bank Central Asia",
+      "sector": "Financial Services",
+      "signal": "BUY",
+      "average_score": 0.65,
+      "article_count": 12,
+      "bullish_articles": 9,
+      "bearish_articles": 1,
+      "neutral_articles": 2,
+      "period": "7d",
+      "generated_at": "2026-08-11T09:30:00Z"
+    }
+  ]
 }
 ```
 
-### 2. Trigger Ingestion Pipeline
+### 3. Historical Sentiment Trend
+`GET /api/v1/signals/:symbol/history`
+**Query Parameters:** `days` (default: 30)
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "date": "2026-08-01",
+      "average_score": 0.45,
+      "article_count": 3
+    },
+    {
+      "date": "2026-08-02",
+      "average_score": 0.72,
+      "article_count": 5
+    }
+  ]
+}
+```
+
+### 4. Trigger Ingestion Pipeline
 `POST /api/v1/ingestion/trigger`
 **Request Body:**
 ```json
 {
-  "sources": [
-    "https://example.com/rss/market-news"
+  "feeds": [
+    {"name": "CNBC Indonesia", "url": "https://www.cnbcindonesia.com/market/rss"}
   ]
 }
 ```
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Ingestion pipeline triggered successfully",
-  "job_id": "job-12345"
-}
-```
 
-### 3. List Articles
+### 5. List Articles
 `GET /api/v1/articles`
-**Query Parameters:**
-- `symbol` (string): Filter by IDX ticker (e.g., BBCA)
-- `sentiment` (string): Filter by sentiment (Bullish, Bearish, Neutral)
-- `source` (string): Filter by news source
-- `from` (string): Start date (YYYY-MM-DD)
-- `to` (string): End date (YYYY-MM-DD)
-- `limit` (int): Items per page (default: 20)
-- `offset` (int): Pagination offset (default: 0)
+**Query Parameters:** `symbol`, `sentiment`, `source`, `from`, `to`, `limit`, `offset`
 
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "123e4567-e89b-12d3-a456-426614174000",
-      "title": "BBCA Reports Record Profits",
-      "url": "https://news.example.com/bbca",
-      "sentiment": "Bullish",
-      "sentiment_score": 0.85,
-      "published_at": "2026-08-11T00:00:00Z"
-    }
-  ],
-  "meta": {
-    "total": 150,
-    "limit": 20,
-    "offset": 0
-  }
-}
-```
-
-### 4. Get Article by ID
+### 6. Get Article by ID
 `GET /api/v1/articles/:id`
 
-### 5. List Stocks
+### 7. List Stocks
 `GET /api/v1/stocks`
 **Query Parameters:** `sector`, `limit`, `offset`
 
-### 6. Get Stock by Symbol
+### 8. Get Stock by Symbol
 `GET /api/v1/stocks/:symbol`
 
 ## 🗄 Database Schema

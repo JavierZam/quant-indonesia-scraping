@@ -6,4 +6,4 @@ CREATE TABLE IF NOT EXISTS stocks (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_stocks_sector ON stocks(sector);
+CREATE INDEX IF NOT EXISTS idx_stocks_sector ON stocks(sector);

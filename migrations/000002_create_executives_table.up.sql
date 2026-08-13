@@ -7,5 +7,5 @@ CREATE TABLE IF NOT EXISTS executives (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_executives_symbol ON executives(symbol);
-CREATE INDEX idx_executives_name ON executives(name);
+CREATE INDEX IF NOT EXISTS idx_executives_symbol ON executives(symbol);
+CREATE INDEX IF NOT EXISTS idx_executives_name ON executives(name);
