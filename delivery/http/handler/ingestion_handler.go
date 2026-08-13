@@ -177,10 +177,10 @@ func (h *IngestionHandler) Trigger(c echo.Context) error {
 		}
 	}()
 
-	return c.JSON(http.StatusAccepted, map[string]interface{}{
-		"message": "Ingestion started in background",
+	return c.JSON(http.StatusAccepted, NewSuccessResponse(map[string]interface{}{
+		"message": "Scraping dimulai di background",
 		"feeds":   len(sources),
-	})
+	}, nil))
 }
 
 // Reprocess handles POST /api/v1/ingestion/reprocess

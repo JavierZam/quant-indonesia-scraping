@@ -27,6 +27,18 @@ type StockSignal struct {
 	NeutralArticles int        `json:"neutral_articles"`
 	Period          string     `json:"period"`
 	GeneratedAt     time.Time  `json:"generated_at"`
+
+	// Technical indicators
+	MA20            *float64   `json:"ma20,omitempty"`
+	MA50            *float64   `json:"ma50,omitempty"`
+	RSI14           *float64   `json:"rsi14,omitempty"`
+	LastPrice       *float64   `json:"last_price,omitempty"`
+	PriceChangePct  *float64   `json:"price_change_pct,omitempty"`
+	TechnicalSignal SignalType `json:"technical_signal,omitempty"`
+
+	// Composite quant score
+	CompositeScore  float64    `json:"composite_score"`
+	Confidence      float64    `json:"confidence"`
 }
 
 // SentimentTrendPoint represents a daily data point for historical sentiment charts and price correlation.

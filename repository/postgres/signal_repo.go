@@ -57,7 +57,11 @@ func (r *SignalRepo) GetStockSignals(ctx context.Context, filter domain.SignalFi
 			s.symbol,
 			s.company_name,
 			COALESCE(s.sector, '') AS sector,
-			COALESCE(AVG(a.sentiment_score), 0.0) AS avg_score,
+			COALESCE(
+				SUM(a.sentiment_score * EXP(-0.15 * EXTRACT(EPOCH FROM (NOW() - a.published_at)) / 86400.0))
+				/ NULLIF(SUM(EXP(-0.15 * EXTRACT(EPOCH FROM (NOW() - a.published_at)) / 86400.0)), 0),
+				0.0
+			) AS avg_score,
 			COUNT(a.id) AS article_count,
 			COUNT(CASE WHEN a.sentiment_label = 'Bullish' THEN 1 END) AS bullish_count,
 			COUNT(CASE WHEN a.sentiment_label = 'Bearish' THEN 1 END) AS bearish_count,

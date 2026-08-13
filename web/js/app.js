@@ -142,11 +142,12 @@ async function loadSignals() {
     let totalArticles = 0;
 
     const cardsHTML = filteredData.map(item => {
-      totalScore += item.average_score;
+      totalScore += item.composite_score || item.average_score;
       totalArticles += item.article_count;
 
-      // Score position for gauge pointer (-1.0 -> 0%, 0.0 -> 50%, +1.0 -> 100%)
-      const pointerPct = Math.min(Math.max(((item.average_score + 1.0) / 2.0) * 100, 5), 95);
+      // Use composite score for gauge pointer (-1.0 -> 0%, 0.0 -> 50%, +1.0 -> 100%)
+      const displayScore = item.composite_score || item.average_score;
+      const pointerPct = Math.min(Math.max(((displayScore + 1.0) / 2.0) * 100, 5), 95);
 
       let badgeClass = 'badge-hold';
       if (item.signal === 'BUY') badgeClass = 'badge-buy';
@@ -154,13 +155,45 @@ async function loadSignals() {
 
       const isSelected = item.symbol === currentSelectedSymbol ? 'border-cyan-500/80 shadow-lg shadow-cyan-500/10 bg-[#12192a]' : '';
 
+      // Technical indicator badges
+      let techBadges = '';
+      if (item.rsi14 != null) {
+        let rsiColor = 'text-amber-400 bg-amber-500/10';
+        let rsiLabel = 'Normal';
+        if (item.rsi14 < 30) { rsiColor = 'text-emerald-400 bg-emerald-500/10'; rsiLabel = 'Oversold'; }
+        else if (item.rsi14 < 40) { rsiColor = 'text-emerald-400 bg-emerald-500/10'; rsiLabel = 'Low'; }
+        else if (item.rsi14 > 80) { rsiColor = 'text-rose-400 bg-rose-500/10'; rsiLabel = 'Overbought!'; }
+        else if (item.rsi14 > 70) { rsiColor = 'text-rose-400 bg-rose-500/10'; rsiLabel = 'High'; }
+        techBadges += `<span class="px-1 py-0.5 rounded text-[9px] font-mono ${rsiColor}" title="RSI(14): ${item.rsi14.toFixed(1)}">RSI:${item.rsi14.toFixed(0)}</span>`;
+      }
+      if (item.ma20 != null && item.last_price != null) {
+        const aboveMA = item.last_price > item.ma20;
+        const maColor = aboveMA ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10';
+        const maArrow = aboveMA ? '↑' : '↓';
+        techBadges += `<span class="px-1 py-0.5 rounded text-[9px] font-mono ${maColor}" title="Price vs MA20">MA20${maArrow}</span>`;
+      }
+
+      // Price info
+      let priceInfo = '';
+      if (item.last_price != null) {
+        const priceChg = item.price_change_pct || 0;
+        const priceColor = priceChg >= 0 ? 'text-emerald-400' : 'text-rose-400';
+        const priceSign = priceChg >= 0 ? '+' : '';
+        priceInfo = `<span class="text-[10px] ${priceColor} font-mono">${priceSign}${priceChg.toFixed(1)}%</span>`;
+      }
+
+      // Confidence bar width
+      const confidence = item.confidence || 0;
+      const confPct = Math.round(confidence * 100);
+
       return `
-        <div class="glass-card glass-card-hover rounded-xl p-3.5 space-y-3 cursor-pointer ${isSelected}" onclick="selectStock('${item.symbol}')">
+        <div class="glass-card glass-card-hover rounded-xl p-3.5 space-y-2.5 cursor-pointer ${isSelected}" onclick="selectStock('${item.symbol}')">
           <div class="flex items-start justify-between">
             <div>
               <div class="flex items-center space-x-2">
                 <span class="text-base font-bold text-white font-mono tracking-tight">${item.symbol}</span>
                 ${item.sector ? `<span class="text-[10px] text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded font-mono truncate max-w-[100px]">${item.sector}</span>` : ''}
+                ${priceInfo}
               </div>
               <p class="text-[11px] text-slate-400 truncate max-w-[170px] mt-0.5">${item.company_name}</p>
             </div>
@@ -169,17 +202,21 @@ async function loadSignals() {
             </span>
           </div>
 
-          <!-- Gauge Score Bar -->
+          <!-- Technical Badges -->
+          ${techBadges ? `<div class="flex items-center gap-1">${techBadges}</div>` : ''}
+
+          <!-- Composite Score Gauge -->
           <div class="space-y-1.5">
             <div class="flex justify-between items-center text-[11px] font-mono">
-              <span class="text-slate-400 text-[10px] uppercase font-sans">Quant Score</span>
-              <span class="${item.average_score > 0.15 ? 'text-emerald-400' : (item.average_score < -0.15 ? 'text-rose-400' : 'text-amber-400')} font-bold">
-                ${item.average_score > 0 ? '+' : ''}${item.average_score.toFixed(2)}
+              <span class="text-slate-400 text-[10px] uppercase font-sans">Composite Score</span>
+              <span class="${displayScore > 0.15 ? 'text-emerald-400' : (displayScore < -0.15 ? 'text-rose-400' : 'text-amber-400')} font-bold">
+                ${displayScore > 0 ? '+' : ''}${displayScore.toFixed(2)}
               </span>
             </div>
             <div class="gauge-bar-track">
               <div class="gauge-bar-pointer" style="left: ${pointerPct}%"></div>
             </div>
+            ${confidence > 0 ? `<div class="flex items-center gap-1.5"><span class="text-[9px] text-slate-500 font-mono">Confidence</span><div class="flex-1 h-1 bg-slate-800 rounded-full overflow-hidden"><div class="h-full rounded-full ${confPct > 70 ? 'bg-emerald-500' : (confPct > 40 ? 'bg-amber-500' : 'bg-rose-500')}" style="width:${confPct}%"></div></div><span class="text-[9px] text-slate-500 font-mono">${confPct}%</span></div>` : ''}
           </div>
 
           <!-- Breakdown Footer -->

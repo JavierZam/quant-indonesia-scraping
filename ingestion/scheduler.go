@@ -14,9 +14,11 @@ import (
 // DefaultFeedSources defines standard Indonesian financial news RSS feeds.
 var DefaultFeedSources = []FeedSource{
 	{Name: "CNBC Indonesia Market", URL: "https://www.cnbcindonesia.com/market/rss"},
+	{Name: "CNBC Indonesia News", URL: "https://www.cnbcindonesia.com/news/rss"},
 	{Name: "Detik Finance", URL: "https://finance.detik.com/rss"},
-	{Name: "Kontan", URL: "https://rss.kontan.co.id/news/investasi"},
 	{Name: "IDX Channel", URL: "https://www.idxchannel.com/rss"},
+	{Name: "Bisnis.com Market", URL: "https://market.bisnis.com/rss"},
+	{Name: "Investor Daily", URL: "https://investor.id/rss"},
 }
 
 // Scheduler handles background automated ingestion runs.
