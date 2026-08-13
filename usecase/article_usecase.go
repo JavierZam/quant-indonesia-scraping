@@ -114,10 +114,15 @@ func (uc *ArticleUsecase) Ingest(ctx context.Context, article *domain.NewsArticl
 	var tags []domain.NewsStockTag
 	for _, tag := range analysis.Tags {
 		if tag.Type == "company" && tag.TickerSymbol != "" {
-			// Upsert the stock entity
+			if sector.IsBlacklisted(tag.TickerSymbol) {
+				uc.logger.Debug("skipping blacklisted non-stock entity", "symbol", tag.TickerSymbol)
+				continue
+			}
+
+			// Upsert the stock entity with official name & sector
 			stock := &domain.Stock{
 				Symbol:      tag.TickerSymbol,
-				CompanyName: tag.Value,
+				CompanyName: sector.GetOfficialCompanyName(tag.TickerSymbol, tag.Value),
 			}
 
 			// Try to determine sector from tags
@@ -293,9 +298,12 @@ func (uc *ArticleUsecase) ReprocessUnanalyzed(ctx context.Context) (int, []error
 		var tags []domain.NewsStockTag
 		for _, tag := range analysis.Tags {
 			if tag.Type == "company" && tag.TickerSymbol != "" {
+				if sector.IsBlacklisted(tag.TickerSymbol) {
+					continue
+				}
 				stock := &domain.Stock{
 					Symbol:      tag.TickerSymbol,
-					CompanyName: tag.Value,
+					CompanyName: sector.GetOfficialCompanyName(tag.TickerSymbol, tag.Value),
 				}
 				rawSector := ""
 				for _, sectorTag := range analysis.Tags {
