@@ -68,10 +68,10 @@ func (uc *SignalUsecase) enrichWithTechnicals(ctx context.Context, sig *domain.S
 		return
 	}
 
-	// Extract close prices (oldest first)
+	// Extract close prices (oldest first for technical indicators)
 	closePrices := make([]float64, len(prices))
 	for i, p := range prices {
-		closePrices[i] = p.ClosePrice
+		closePrices[len(prices)-1-i] = p.ClosePrice
 	}
 
 	// Compute technical indicators

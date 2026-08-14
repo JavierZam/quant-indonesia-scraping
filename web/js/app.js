@@ -275,7 +275,7 @@ function renderSignals() {
     if (window.lucide) window.lucide.createIcons();
 
     // Update overview metrics
-    const avgMarketScore = (totalScore / result.data.length) || 0;
+    const avgMarketScore = (totalScore / (cachedSignalsData.length || 1)) || 0;
     const avgScoreEl = document.getElementById('metricAvgSentiment');
     const avgLabelEl = document.getElementById('metricSentimentLabel');
     const articleCountEl = document.getElementById('metricArticleCount');
@@ -285,7 +285,7 @@ function renderSignals() {
     if (articleCountEl) articleCountEl.innerText = totalArticles;
 
     // Update Top Marquee Ticker Tape
-    updateTickerMarquee(result.data);
+    updateTickerMarquee(cachedSignalsData);
 
   } catch (err) {
     console.error('Failed to load signals:', err);
