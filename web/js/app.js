@@ -6,7 +6,14 @@ let detailChartInstance = null;
 let currentSignalFilter = ''; // '', 'BUY', 'SELL', 'HOLD'
 let searchQuery = '';
 
-function initApp() {
+let appInitialized = false;
+
+function safeInitApp() {
+  if (appInitialized) return;
+  appInitialized = true;
+
+  console.log('[QuantTerminal] Initializing application...');
+
   try { initHealthCheck(); } catch (e) { console.error('HealthCheck init error:', e); }
   try { initSignalFilters(); } catch (e) { console.error('SignalFilters init error:', e); }
   try { initNewsFilters(); } catch (e) { console.error('NewsFilters init error:', e); }
@@ -29,10 +36,9 @@ function initApp() {
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initApp);
-} else {
-  initApp();
+  document.addEventListener('DOMContentLoaded', safeInitApp);
 }
+safeInitApp();
 
 // ─── HEALTH CHECK ──────────────────────────────────────
 
