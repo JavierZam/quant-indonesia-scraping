@@ -7,15 +7,15 @@ let currentSignalFilter = ''; // '', 'BUY', 'SELL', 'HOLD'
 let searchQuery = '';
 
 function initApp() {
-  initHealthCheck();
-  initSignalFilters();
-  initNewsFilters();
-  initIngestionTrigger();
-  initReprocessTrigger();
-  initSearchAndTabs();
-  initImportModal();
-  initSSEProcessStream();
-  initStockDetailPanel();
+  try { initHealthCheck(); } catch (e) { console.error('HealthCheck init error:', e); }
+  try { initSignalFilters(); } catch (e) { console.error('SignalFilters init error:', e); }
+  try { initNewsFilters(); } catch (e) { console.error('NewsFilters init error:', e); }
+  try { initIngestionTrigger(); } catch (e) { console.error('IngestionTrigger init error:', e); }
+  try { initReprocessTrigger(); } catch (e) { console.error('ReprocessTrigger init error:', e); }
+  try { initSearchAndTabs(); } catch (e) { console.error('SearchAndTabs init error:', e); }
+  try { initImportModal(); } catch (e) { console.error('ImportModal init error:', e); }
+  try { initSSEProcessStream(); } catch (e) { console.error('SSEProcessStream init error:', e); }
+  try { initStockDetailPanel(); } catch (e) { console.error('StockDetailPanel init error:', e); }
 
   // Load initial data
   loadSignals();

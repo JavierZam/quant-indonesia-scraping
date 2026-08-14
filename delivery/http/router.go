@@ -2,6 +2,7 @@ package http
 
 import (
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -112,7 +113,18 @@ func NewRouter(deps RouterDeps) *echo.Echo {
 		importGroup.POST("/refresh-prices", deps.ImportHandler.RefreshAllPrices)
 	}
 
-	// Serve Static Web Dashboard
+	// Serve Static Web Dashboard with no-cache headers for instant updates
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			path := c.Request().URL.Path
+			if path == "/" || strings.HasSuffix(path, ".html") || strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") {
+				c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				c.Response().Header().Set("Pragma", "no-cache")
+				c.Response().Header().Set("Expires", "0")
+			}
+			return next(c)
+		}
+	})
 	e.Static("/", "web")
 
 	return e
