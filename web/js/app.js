@@ -6,7 +6,7 @@ let detailChartInstance = null;
 let currentSignalFilter = ''; // '', 'BUY', 'SELL', 'HOLD'
 let searchQuery = '';
 
-document.addEventListener('DOMContentLoaded', () => {
+function initApp() {
   initHealthCheck();
   initSignalFilters();
   initNewsFilters();
@@ -26,7 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // Periodic health check ping
   setInterval(initHealthCheck, 15000);
   setInterval(loadIHSG, 5 * 60 * 1000);
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 // ─── HEALTH CHECK ──────────────────────────────────────
 
