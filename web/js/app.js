@@ -54,6 +54,10 @@ async function initHealthCheck() {
   }
 }
 
+let cachedSignalsData = null;
+let lastFetchedPeriod = '';
+let lastFetchedSector = '';
+
 // ─── SEARCH & SIGNAL FILTER TABS ──────────────────────
 
 function initSearchAndTabs() {
@@ -61,7 +65,7 @@ function initSearchAndTabs() {
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
       searchQuery = e.target.value.trim().toLowerCase();
-      loadSignals();
+      renderSignals();
     });
   }
 
@@ -77,7 +81,7 @@ function initSearchAndTabs() {
       btn.classList.add('bg-cyan-500/20', 'text-cyan-400');
 
       currentSignalFilter = btn.getAttribute('data-signal-filter') || '';
-      loadSignals();
+      renderSignals();
     });
   });
 }
@@ -86,14 +90,20 @@ function initSignalFilters() {
   const periodSel = document.getElementById('signalPeriodFilter');
   const sectorSel = document.getElementById('signalSectorFilter');
 
-  if (periodSel) periodSel.addEventListener('change', loadSignals);
-  if (sectorSel) sectorSel.addEventListener('change', loadSignals);
+  if (periodSel) periodSel.addEventListener('change', () => loadSignals(true));
+  if (sectorSel) sectorSel.addEventListener('change', () => loadSignals(true));
 }
 
-async function loadSignals() {
+async function loadSignals(forceRefresh = false) {
   const container = document.getElementById('signalsContainer');
   const period = document.getElementById('signalPeriodFilter')?.value || '7d';
   const sector = document.getElementById('signalSectorFilter')?.value || '';
+
+  // Use in-memory cache if period and sector haven't changed
+  if (!forceRefresh && cachedSignalsData && lastFetchedPeriod === period && lastFetchedSector === sector) {
+    renderSignals();
+    return;
+  }
 
   let url = `/api/v1/signals?period=${period}`;
   if (sector) url += `&sector=${encodeURIComponent(sector)}`;
@@ -103,6 +113,7 @@ async function loadSignals() {
     const result = await res.json();
 
     if (!result.success || !result.data || result.data.length === 0) {
+      cachedSignalsData = [];
       container.innerHTML = `
         <div class="col-span-full text-center py-12 glass-card rounded-xl text-slate-400">
           <i data-lucide="info" class="w-8 h-8 mx-auto mb-2 text-cyan-400"></i>
@@ -114,32 +125,60 @@ async function loadSignals() {
       return;
     }
 
-    // Filter by signal type and search query
-    let filteredData = result.data;
+    cachedSignalsData = result.data;
+    lastFetchedPeriod = period;
+    lastFetchedSector = sector;
 
-    if (currentSignalFilter) {
-      filteredData = filteredData.filter(item => item.signal === currentSignalFilter);
-    }
-
-    if (searchQuery) {
-      filteredData = filteredData.filter(item => 
-        item.symbol.toLowerCase().includes(searchQuery) ||
-        (item.company_name && item.company_name.toLowerCase().includes(searchQuery))
-      );
-    }
-
-    if (filteredData.length === 0) {
+    renderSignals();
+  } catch (err) {
+    console.error('Failed to load signals:', err);
+    if (container) {
       container.innerHTML = `
-        <div class="col-span-full text-center py-8 glass-card rounded-xl text-slate-500 text-xs font-mono">
-          Tidak ada emiten yang sesuai dengan filter '${searchQuery || currentSignalFilter}'.
+        <div class="col-span-full text-center py-8 glass-card rounded-xl text-rose-400 text-xs font-mono">
+          Gagal memuat sinyal kuantitatif: ${err.message || err}
         </div>
       `;
-      return;
     }
+  }
+}
 
-    // Calculate overview stats
-    let totalScore = 0;
-    let totalArticles = 0;
+function renderSignals() {
+  const container = document.getElementById('signalsContainer');
+  if (!container || !cachedSignalsData) return;
+
+  // Filter by signal type and search query
+  let filteredData = [...cachedSignalsData];
+
+  if (currentSignalFilter) {
+    filteredData = filteredData.filter(item => item.signal === currentSignalFilter);
+  }
+
+  if (searchQuery) {
+    filteredData = filteredData.filter(item => 
+      item.symbol.toLowerCase().includes(searchQuery) ||
+      (item.company_name && item.company_name.toLowerCase().includes(searchQuery))
+    );
+  }
+
+  // Strictly sort by Composite Score descending (highest score first)
+  filteredData.sort((a, b) => {
+    const scoreA = a.composite_score !== undefined && a.composite_score !== null ? a.composite_score : (a.average_score || 0);
+    const scoreB = b.composite_score !== undefined && b.composite_score !== null ? b.composite_score : (b.average_score || 0);
+    return scoreB - scoreA;
+  });
+
+  if (filteredData.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full text-center py-8 glass-card rounded-xl text-slate-500 text-xs font-mono">
+        Tidak ada emiten yang sesuai dengan filter '${searchQuery || currentSignalFilter}'.
+      </div>
+    `;
+    return;
+  }
+
+  // Calculate overview stats
+  let totalScore = 0;
+  let totalArticles = 0;
 
     const cardsHTML = filteredData.map(item => {
       totalScore += item.composite_score || item.average_score;
@@ -570,7 +609,7 @@ function initReprocessTrigger() {
       const data = await res.json();
 
       if (data.success) {
-        loadSignals();
+        loadSignals(true);
         loadNews();
         if (currentSelectedSymbol) loadHistory(currentSelectedSymbol);
       } else if (data.error?.code !== 'CONFLICT') {
@@ -882,7 +921,7 @@ function initSSEProcessStream() {
           }, 1500);
 
           showToast(data.type === 'done' ? 'success' : 'info', data.message);
-          loadSignals();
+          loadSignals(true);
           loadNews();
           if (currentSelectedSymbol) loadHistory(currentSelectedSymbol);
         }

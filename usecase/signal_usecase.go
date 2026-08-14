@@ -3,6 +3,8 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"sort"
+	"sync"
 
 	"github.com/JavierZam/quant-indonesia-scraping/domain"
 	"github.com/JavierZam/quant-indonesia-scraping/pkg/quant"
@@ -34,10 +36,25 @@ func (uc *SignalUsecase) GetSignals(ctx context.Context, filter domain.SignalFil
 		return nil, fmt.Errorf("getting stock signals: %w", err)
 	}
 
-	// Enrich each signal with technical indicators
+	// Enrich each signal concurrently with technical indicators and composite scoring
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 20) // max 20 concurrent goroutines
+
 	for _, sig := range signals {
-		uc.enrichWithTechnicals(ctx, sig)
+		wg.Add(1)
+		go func(s *domain.StockSignal) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			uc.enrichWithTechnicals(ctx, s)
+		}(sig)
 	}
+	wg.Wait()
+
+	// Sort signals strictly by CompositeScore DESCENDING (highest score first)
+	sort.Slice(signals, func(i, j int) bool {
+		return signals[i].CompositeScore > signals[j].CompositeScore
+	})
 
 	return signals, nil
 }
@@ -46,7 +63,9 @@ func (uc *SignalUsecase) enrichWithTechnicals(ctx context.Context, sig *domain.S
 	// Fetch price history (60 days for MA50 + buffer)
 	prices, err := uc.stockPriceRepo.ListBySymbol(ctx, sig.Symbol, 90)
 	if err != nil || len(prices) < 15 {
-		return // Not enough data for technical analysis
+		// Even without price history, set composite score to sentiment score
+		sig.CompositeScore = sig.AverageScore
+		return
 	}
 
 	// Extract close prices (oldest first)
@@ -58,6 +77,7 @@ func (uc *SignalUsecase) enrichWithTechnicals(ctx context.Context, sig *domain.S
 	// Compute technical indicators
 	tech := technical.Analyze(closePrices)
 	if tech == nil {
+		sig.CompositeScore = sig.AverageScore
 		return
 	}
 
