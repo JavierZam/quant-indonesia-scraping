@@ -36,6 +36,10 @@ func (uc *SignalUsecase) GetSignals(ctx context.Context, filter domain.SignalFil
 		return nil, fmt.Errorf("getting stock signals: %w", err)
 	}
 
+	if signals == nil {
+		signals = make([]*domain.StockSignal, 0)
+	}
+
 	// Enrich each signal concurrently with technical indicators and composite scoring
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 20) // max 20 concurrent goroutines

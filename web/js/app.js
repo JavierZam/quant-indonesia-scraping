@@ -124,15 +124,17 @@ async function loadSignals(forceRefresh = false) {
     const res = await fetch(url);
     const result = await res.json();
 
-    if (!result.success || !result.data || result.data.length === 0) {
+    if (!result.success || !Array.isArray(result.data) || result.data.length === 0) {
       cachedSignalsData = [];
-      container.innerHTML = `
-        <div class="col-span-full text-center py-12 glass-card rounded-xl text-slate-400">
-          <i data-lucide="info" class="w-8 h-8 mx-auto mb-2 text-cyan-400"></i>
-          <p class="font-medium text-xs">Belum ada sinyal teranalisis untuk periode ${period}.</p>
-          <p class="text-[11px] text-slate-500 mt-1">Klik tombol <strong>Run Scrape AI</strong> atau <strong>Reprocess AI</strong> di atas untuk menganalisis berita!</p>
-        </div>
-      `;
+      if (container) {
+        container.innerHTML = `
+          <div class="col-span-full text-center py-12 glass-card rounded-xl text-slate-400">
+            <i data-lucide="info" class="w-8 h-8 mx-auto mb-2 text-cyan-400"></i>
+            <p class="font-medium text-xs">Belum ada sinyal teranalisis untuk periode ${period}.</p>
+            <p class="text-[11px] text-slate-500 mt-1">Klik tombol <strong>Run Scrape AI</strong> atau <strong>Reprocess AI</strong> di atas untuk menganalisis berita!</p>
+          </div>
+        `;
+      }
       if (window.lucide) window.lucide.createIcons();
       return;
     }
