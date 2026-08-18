@@ -158,7 +158,8 @@ function renderSignals() {
   const container = document.getElementById('signalsContainer');
   if (!container || !cachedSignalsData) return;
 
-  // Filter by signal type and search query
+  try {
+    // Filter by signal type and search query
   let filteredData = [...cachedSignalsData];
 
   if (currentSignalFilter) {
@@ -298,16 +299,8 @@ function renderSignals() {
 
     // Update Top Marquee Ticker Tape
     updateTickerMarquee(cachedSignalsData);
-
   } catch (err) {
-    console.error('Failed to load signals:', err);
-    if (container) {
-      container.innerHTML = `
-        <div class="col-span-full text-center py-8 glass-card rounded-xl text-rose-400 text-xs font-mono">
-          Gagal memuat sinyal kuantitatif: ${err.message || err}
-        </div>
-      `;
-    }
+    console.error('Failed to render signals:', err);
   }
 }
 
