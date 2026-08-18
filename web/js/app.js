@@ -1,11 +1,16 @@
 // Quant IDX Pro FinTech Terminal Application JS
 
+// Global State & Data Cache Declarations
 let currentSelectedSymbol = 'BBCA';
 let sentimentChartInstance = null;
 let detailChartInstance = null;
+let ihsgChartInstance = null;
 let currentSignalFilter = ''; // '', 'BUY', 'SELL', 'HOLD'
 let searchQuery = '';
-
+let cachedSignalsData = null;
+let lastFetchedPeriod = '';
+let lastFetchedSector = '';
+let liveProcessLogs = [];
 let appInitialized = false;
 
 function safeInitApp() {
@@ -35,11 +40,6 @@ function safeInitApp() {
   setInterval(loadIHSG, 5 * 60 * 1000);
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', safeInitApp);
-}
-safeInitApp();
-
 // ─── HEALTH CHECK ──────────────────────────────────────
 
 async function initHealthCheck() {
@@ -65,10 +65,6 @@ async function initHealthCheck() {
     if (statusText) statusText.innerText = 'Backend Offline';
   }
 }
-
-let cachedSignalsData = null;
-let lastFetchedPeriod = '';
-let lastFetchedSector = '';
 
 // ─── SEARCH & SIGNAL FILTER TABS ──────────────────────
 
@@ -814,8 +810,6 @@ function showToast(type, message) {
 
 // ─── REAL-TIME PROCESS STREAM ───────────────────────────
 
-let liveProcessLogs = [];
-
 function initSSEProcessStream() {
   const banner = document.getElementById('processBanner');
   const bannerMsg = document.getElementById('processBannerMsg');
@@ -1279,8 +1273,6 @@ async function loadDetailPriceChart(symbol, range) {
 
 // ─── IHSG MARKET OVERVIEW ───────────────────────────────
 
-let ihsgChartInstance = null;
-
 async function loadIHSG() {
   try {
     const res = await fetch('/api/v1/market/ihsg');
@@ -1357,3 +1349,10 @@ async function loadIHSG() {
     console.error('Failed to load IHSG:', err);
   }
 }
+
+// ─── INITIALIZE APPLICATION ──────────────────────────────
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', safeInitApp);
+}
+safeInitApp();
